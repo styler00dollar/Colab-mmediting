@@ -1,9 +1,10 @@
-from .vic.loss import CharbonnierLoss, GANLoss, GradientPenaltyLoss, HFENLoss, TVLoss, GradientLoss, ElasticLoss, RelativeL1, L1CosineSim, ClipL1, MaskedL1Loss, MultiscalePixelLoss, FFTloss, OFLoss, L1_regularization, ColorLoss, AverageLoss, GPLoss, CPLoss, SPL_ComputeWithTrace, SPLoss, Contextual_Loss
-from .vic.filters import *
-from .vic.colors import *
-from .vic.discriminators import *
-from .diffaug import *
+from vic.loss import CharbonnierLoss, GANLoss, GradientPenaltyLoss, HFENLoss, TVLoss, GradientLoss, ElasticLoss, RelativeL1, L1CosineSim, ClipL1, MaskedL1Loss, MultiscalePixelLoss, FFTloss, OFLoss, L1_regularization, ColorLoss, AverageLoss, GPLoss, CPLoss, SPL_ComputeWithTrace, SPLoss, Contextual_Loss
+from vic.filters import *
+from vic.colors import *
+from vic.discriminators import *
+from diffaug import *
 
+from torchvision.utils import save_image
 import os.path as osp
 from pathlib import Path
 
@@ -56,7 +57,7 @@ class TwoStageInpaintor(OneStageInpaintor):
             self.test_cfg['metrics'] is not None)
 
         # new loss
-
+        
         # #l_hfen_type = CharbonnierLoss() # nn.L1Loss(), nn.MSELoss(), CharbonnierLoss(), ElasticLoss(), RelativeL1(), L1CosineSim()
         l_hfen_type = L1CosineSim()
         self.HFENLoss = HFENLoss(loss_f=l_hfen_type, kernel='log', kernel_size=15, sigma = 2.5, norm = False)
@@ -78,8 +79,8 @@ class TwoStageInpaintor(OneStageInpaintor):
         self.CPLoss = CPLoss(rgb=True, yuv=True, yuvgrad=True, trace=False, spl_denorm=False, yuv_denorm=False)
 
         layers_weights = {'conv_1_1': 1.0, 'conv_3_2': 1.0}
-        self.Contextual_Loss = Contextual_Loss(layers_weights, crop_quarter=False, max_1d_size=100,
-            distance_type = 'cosine', b=1.0, band_width=0.5,
+        self.Contextual_Loss = Contextual_Loss(layers_weights, crop_quarter=False, max_1d_size=100, 
+            distance_type = 'cosine', b=1.0, band_width=0.5, 
             use_vgg = True, net = 'vgg19', calc_type = 'regular')
 
 
@@ -298,6 +299,9 @@ class TwoStageInpaintor(OneStageInpaintor):
         elif 'CP' in loss_type:
             loss_cp = self.FFTloss(fake_img, gt)
             loss_dict[prefix + loss_type] = loss_cp
+		elif 'Contextual' in loss_type:
+            loss_context = self.Contextual_Loss(fake_img, gt)
+            loss_dict[prefix + loss_type] = loss_context
         else:
             raise NotImplementedError(
                 f'Please check your loss type {loss_type}'
@@ -336,12 +340,24 @@ class TwoStageInpaintor(OneStageInpaintor):
         mask = data_batch['mask']
         masked_img = data_batch['masked_img']
 
+        img_size = 512
+        MOSAIC_MIN = 0.03
+        MOSAIC_MID = 0.10
+        MOSAIC_MAX = 0.2
+
+        mosaic_size = int(random.triangular(int(min(img_size*MOSAIC_MIN, img_size*MOSAIC_MIN)), int(min(img_size*MOSAIC_MID, img_size*MOSAIC_MID)), int(min(img_size*MOSAIC_MAX, img_size*MOSAIC_MAX))))
+        images_mosaic = torch.nn.functional.interpolate(gt_img, size=(mosaic_size, mosaic_size), mode='nearest')
+        images_mosaic = torch.nn.functional.interpolate(images_mosaic, size=(img_size, img_size), mode='nearest')
+        #masked = (img * (1 - mask).float()) + (images_mosaic * (mask).float())
+        masked_img = (images_mosaic * (1 - mask).float()) + (gt_img * (mask).float())
+
         # get common output from encdec
         if self.input_with_ones:
             tmp_ones = torch.ones_like(mask)
             input_x = torch.cat([masked_img, tmp_ones, mask], dim=1)
         else:
             input_x = torch.cat([masked_img, mask], dim=1)
+
         stage1_fake_res, stage2_fake_res = self.generator(input_x)
         stage1_fake_img = masked_img * (1. - mask) + stage1_fake_res * mask
         stage2_fake_img = masked_img * (1. - mask) + stage2_fake_res * mask
