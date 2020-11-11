@@ -1,15 +1,22 @@
+from vic.loss import CharbonnierLoss, GANLoss, GradientPenaltyLoss, HFENLoss, TVLoss, GradientLoss, ElasticLoss, RelativeL1, L1CosineSim, ClipL1, MaskedL1Loss, MultiscalePixelLoss, FFTloss, OFLoss, L1_regularization, ColorLoss, AverageLoss, GPLoss, CPLoss, SPL_ComputeWithTrace, SPLoss, Contextual_Loss
+from vic.filters import *
+from vic.colors import *
+from vic.discriminators import *
+from diffaug import *
+
 import os.path as osp
 from pathlib import Path
 
 import mmcv
 import torch
+from mmedit.core import tensor2img
 from torchvision.utils import save_image
 
-from mmedit.core import tensor2img
 from ..common.model_utils import set_requires_grad
 from ..registry import MODELS
 from .one_stage import OneStageInpaintor
 
+#from DiffAugment_pytorch import DiffAugment
 
 @MODELS.register_module()
 class TwoStageInpaintor(OneStageInpaintor):
@@ -47,6 +54,35 @@ class TwoStageInpaintor(OneStageInpaintor):
         self.disc_input_with_mask = disc_input_with_mask
         self.eval_with_metrics = ('metrics' in self.test_cfg) and (
             self.test_cfg['metrics'] is not None)
+
+        # new loss
+
+        # #l_hfen_type = CharbonnierLoss() # nn.L1Loss(), nn.MSELoss(), CharbonnierLoss(), ElasticLoss(), RelativeL1(), L1CosineSim()
+        l_hfen_type = L1CosineSim()
+        self.HFENLoss = HFENLoss(loss_f=l_hfen_type, kernel='log', kernel_size=15, sigma = 2.5, norm = False)
+
+        self.ElasticLoss = ElasticLoss(a=0.2, reduction='mean')
+
+        self.RelativeL1 = RelativeL1(eps=.01, reduction='mean')
+
+        self.L1CosineSim = L1CosineSim(loss_lambda=5, reduction='mean')
+
+        self.ClipL1 = ClipL1(clip_min=0.0, clip_max=10.0)
+
+        self.FFTloss = FFTloss(loss_f = torch.nn.L1Loss, reduction='mean')
+
+        self.OFLoss = OFLoss()
+
+        self.GPLoss = GPLoss(trace=False, spl_denorm=False)
+
+        self.CPLoss = CPLoss(rgb=True, yuv=True, yuvgrad=True, trace=False, spl_denorm=False, yuv_denorm=False)
+
+        layers_weights = {'conv_1_1': 1.0, 'conv_3_2': 1.0}
+        self.Contextual_Loss = Contextual_Loss(layers_weights, crop_quarter=False, max_1d_size=100,
+            distance_type = 'cosine', b=1.0, band_width=0.5,
+            use_vgg = True, net = 'vgg19', calc_type = 'regular')
+
+
 
     def forward_test(self,
                      masked_img,
@@ -212,7 +248,14 @@ class TwoStageInpaintor(OneStageInpaintor):
             else:
                 disc_input_x = fake_img
             g_fake_pred = self.disc(disc_input_x)
+            #############################################################
+            #loss_g_fake = self.loss_gan(g_fake_pred, True, is_disc=False)
+            #loss_g_fake = (DiffAugment(g_fake_pred, policy=policy)) #DiffAug
+
+            #alternativ:
+            g_fake_pred = DiffAugment(g_fake_pred, policy=policy)
             loss_g_fake = self.loss_gan(g_fake_pred, True, is_disc=False)
+            ##############################################################
             loss_dict[prefix + 'loss_g_fake'] = loss_g_fake
         elif 'percep' in loss_type:
             loss_pecep, loss_style = self.loss_percep(fake_img, gt)
@@ -227,6 +270,34 @@ class TwoStageInpaintor(OneStageInpaintor):
             weight = 1. - mask if 'valid' in loss_type else mask
             loss_l1 = getattr(self, loss_type)(fake_res, gt, weight=weight)
             loss_dict[prefix + loss_type] = loss_l1
+        # new
+        elif 'HFEN' in loss_type:
+            loss_hfen = self.HFENLoss(fake_img, gt)
+            loss_dict[prefix + loss_type] = loss_hfen
+        elif 'Elastic' in loss_type:
+            loss_elastic = self.ElasticLoss(fake_img, gt)
+            loss_dict[prefix + loss_type] = loss_elastic
+        elif 'RelativeL1' in loss_type:
+            loss_relativel1 = self.RelativeL1(fake_img, gt)
+            loss_dict[prefix + loss_type] = loss_relativel1
+        elif 'L1CosineSim' in loss_type:
+            loss_l1cosinesim = self.L1CosineSim(fake_img, gt)
+            loss_dict[prefix + loss_type] = loss_l1cosinesim
+        elif 'ClipL1' in loss_type:
+            loss_clipl1 = self.ClipL1(fake_img, gt)
+            loss_dict[prefix + loss_type] = loss_clipl1
+        elif 'FFT' in loss_type:
+            loss_fft = self.FFTloss(fake_img, gt)
+            loss_dict[prefix + loss_type] = loss_fft
+        elif 'OF' in loss_type:
+            loss_of = self.FFTloss(fake_img)
+            loss_dict[prefix + loss_type] = loss_of
+        elif 'GP' in loss_type:
+            loss_gp = self.FFTloss(fake_img, gt)
+            loss_dict[prefix + loss_type] = loss_gp
+        elif 'CP' in loss_type:
+            loss_cp = self.FFTloss(fake_img, gt)
+            loss_dict[prefix + loss_type] = loss_cp
         else:
             raise NotImplementedError(
                 f'Please check your loss type {loss_type}'
@@ -286,8 +357,7 @@ class TwoStageInpaintor(OneStageInpaintor):
                                          dim=1)
             else:
                 disc_input_x = stage2_fake_img.detach()
-            disc_losses = self.forward_train_d(
-                disc_input_x, False, is_disc=True)
+            disc_losses = self.forward_train_d(disc_input_x, False, is_disc=True)
             loss_disc, log_vars_d = self.parse_losses(disc_losses)
             log_vars.update(log_vars_d)
             optimizer['disc'].zero_grad()
@@ -297,8 +367,7 @@ class TwoStageInpaintor(OneStageInpaintor):
                 disc_input_x = torch.cat([gt_img, mask], dim=1)
             else:
                 disc_input_x = gt_img
-            disc_losses = self.forward_train_d(
-                disc_input_x, True, is_disc=True)
+            disc_losses = self.forward_train_d(disc_input_x, True, is_disc=True)
             loss_disc, log_vars_d = self.parse_losses(disc_losses)
             log_vars.update(log_vars_d)
             loss_disc.backward()
@@ -306,10 +375,8 @@ class TwoStageInpaintor(OneStageInpaintor):
             if self.with_gp_loss:
                 # gradient penalty loss should not be used with mask as input
                 assert not self.disc_input_with_mask
-                loss_d_gp = self.loss_gp(
-                    self.disc, gt_img, stage2_fake_img, mask=mask)
-                loss_disc, log_vars_d = self.parse_losses(
-                    dict(loss_gp=loss_d_gp))
+                loss_d_gp = self.loss_gp(self.disc, gt_img, stage2_fake_img, mask=mask)
+                loss_disc, log_vars_d = self.parse_losses(dict(loss_gp=loss_d_gp))
                 log_vars.update(log_vars_d)
                 loss_disc.backward()
 
@@ -341,10 +408,8 @@ class TwoStageInpaintor(OneStageInpaintor):
         # data for visualization
         if self.with_gan:
             set_requires_grad(self.disc, False)
-        results, two_stage_losses = self.two_stage_loss(
-            stage1_results, stage2_results, data_batch)
-        loss_two_stage, log_vars_two_stage = self.parse_losses(
-            two_stage_losses)
+        results, two_stage_losses = self.two_stage_loss(stage1_results, stage2_results, data_batch)
+        loss_two_stage, log_vars_two_stage = self.parse_losses(two_stage_losses)
         log_vars.update(log_vars_two_stage)
         optimizer['generator'].zero_grad()
         loss_two_stage.backward()
@@ -356,3 +421,22 @@ class TwoStageInpaintor(OneStageInpaintor):
             results=results)
 
         return outputs
+
+
+"""
+# generator
+two_stage.py / train_step()
+v
+two_stage.py / two_stage_loss()
+v
+two_stage.py / calculate_loss_with_type()
+v
+two_stage.py / loss_g_fake = self.loss_gan(g_fake_pred, True, is_disc=False)
+
+# discriminator
+two_stage.py / train_step()
+v
+two_stage.py -> one_stage.py / forward_train_d()
+v
+one_stage.py / loss = dict(real_loss=loss_) if is_real else dict(fake_loss=loss_)
+"""

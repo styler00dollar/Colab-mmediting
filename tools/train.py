@@ -87,11 +87,11 @@ def main():
     logger = get_root_logger(log_file=log_file, log_level=cfg.log_level)
 
     # log env info
-    env_info_dict = collect_env.collect_env()
-    env_info = '\n'.join([f'{k}: {v}' for k, v in env_info_dict.items()])
-    dash_line = '-' * 60 + '\n'
-    logger.info('Environment info:\n' + dash_line + env_info + '\n' +
-                dash_line)
+    #env_info_dict = collect_env()
+    #env_info = '\n'.join([f'{k}: {v}' for k, v in env_info_dict.items()])
+    #dash_line = '-' * 60 + '\n'
+    #logger.info('Environment info:\n' + dash_line + env_info + '\n' +
+    #            dash_line)
 
     # log some basic info
     logger.info('Distributed training: {}'.format(distributed))
@@ -128,7 +128,7 @@ def main():
     meta['exp_name'] = cfg.exp_name
     meta['mmedit Version'] = __version__
     meta['seed'] = args.seed
-    meta['env_info'] = env_info
+    #meta['env_info'] = env_info
 
     # add an attribute for visualization convenience
     train_model(
