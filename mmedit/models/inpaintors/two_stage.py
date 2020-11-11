@@ -299,7 +299,7 @@ class TwoStageInpaintor(OneStageInpaintor):
         elif 'CP' in loss_type:
             loss_cp = self.FFTloss(fake_img, gt)
             loss_dict[prefix + loss_type] = loss_cp
-		elif 'Contextual' in loss_type:
+        elif 'Contextual' in loss_type:
             loss_context = self.Contextual_Loss(fake_img, gt)
             loss_dict[prefix + loss_type] = loss_context
         else:
