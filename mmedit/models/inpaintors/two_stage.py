@@ -1,8 +1,8 @@
-from vic.loss import CharbonnierLoss, GANLoss, GradientPenaltyLoss, HFENLoss, TVLoss, GradientLoss, ElasticLoss, RelativeL1, L1CosineSim, ClipL1, MaskedL1Loss, MultiscalePixelLoss, FFTloss, OFLoss, L1_regularization, ColorLoss, AverageLoss, GPLoss, CPLoss, SPL_ComputeWithTrace, SPLoss, Contextual_Loss
-from vic.filters import *
-from vic.colors import *
-from vic.discriminators import *
-from diffaug import *
+from .vic.loss import CharbonnierLoss, GANLoss, GradientPenaltyLoss, HFENLoss, TVLoss, GradientLoss, ElasticLoss, RelativeL1, L1CosineSim, ClipL1, MaskedL1Loss, MultiscalePixelLoss, FFTloss, OFLoss, L1_regularization, ColorLoss, AverageLoss, GPLoss, CPLoss, SPL_ComputeWithTrace, SPLoss, Contextual_Loss
+from .vic.filters import *
+from .vic.colors import *
+from .vic.discriminators import *
+from .diffaug import *
 
 from torchvision.utils import save_image
 import os.path as osp
@@ -339,7 +339,7 @@ class TwoStageInpaintor(OneStageInpaintor):
         gt_img = data_batch['gt_img']
         mask = data_batch['mask']
         masked_img = data_batch['masked_img']
-
+        """
         img_size = 512
         MOSAIC_MIN = 0.03
         MOSAIC_MID = 0.10
@@ -350,7 +350,7 @@ class TwoStageInpaintor(OneStageInpaintor):
         images_mosaic = torch.nn.functional.interpolate(images_mosaic, size=(img_size, img_size), mode='nearest')
         #masked = (img * (1 - mask).float()) + (images_mosaic * (mask).float())
         masked_img = (images_mosaic * (1 - mask).float()) + (gt_img * (mask).float())
-
+        """
         # get common output from encdec
         if self.input_with_ones:
             tmp_ones = torch.ones_like(mask)
