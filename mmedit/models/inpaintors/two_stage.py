@@ -1,4 +1,4 @@
-from .vic.loss import CharbonnierLoss, GANLoss, GradientPenaltyLoss, HFENLoss, TVLoss, GradientLoss, ElasticLoss, RelativeL1, L1CosineSim, ClipL1, MaskedL1Loss, MultiscalePixelLoss, FFTloss, OFLoss, L1_regularization, ColorLoss, AverageLoss, GPLoss, CPLoss, SPL_ComputeWithTrace, SPLoss, Contextual_Loss
+from .vic.loss import CharbonnierLoss, GANLoss, GradientPenaltyLoss, HFENLoss, TVLoss, GradientLoss, ElasticLoss, RelativeL1, L1CosineSim, ClipL1, MaskedL1Loss, MultiscalePixelLoss, FFTloss, OFLoss, L1_regularization, ColorLoss, AverageLoss, GPLoss, CPLoss, SPL_ComputeWithTrace, SPLoss, Contextual_Loss, StyleLoss
 from .vic.filters import *
 from .vic.colors import *
 from .vic.discriminators import *
@@ -59,7 +59,7 @@ class TwoStageInpaintor(OneStageInpaintor):
         # new loss
         
         # #l_hfen_type = CharbonnierLoss() # nn.L1Loss(), nn.MSELoss(), CharbonnierLoss(), ElasticLoss(), RelativeL1(), L1CosineSim()
-        l_hfen_type = L1CosineSim()
+        l_hfen_type = CharbonnierLoss()
         self.HFENLoss = HFENLoss(loss_f=l_hfen_type, kernel='log', kernel_size=15, sigma = 2.5, norm = False)
 
         self.ElasticLoss = ElasticLoss(a=0.2, reduction='mean')
@@ -83,6 +83,11 @@ class TwoStageInpaintor(OneStageInpaintor):
             distance_type = 'cosine', b=1.0, band_width=0.5, 
             use_vgg = True, net = 'vgg19', calc_type = 'regular')
 
+        # for mosaic hotfix image save
+        self.iteration_count = 0
+        
+        self.StyleLoss = StyleLoss()
+        
 
 
     def forward_test(self,
@@ -302,6 +307,9 @@ class TwoStageInpaintor(OneStageInpaintor):
         elif 'Contextual' in loss_type:
             loss_context = self.Contextual_Loss(fake_img, gt)
             loss_dict[prefix + loss_type] = loss_context
+        elif 'Style' in loss_type:
+            loss_style = self.StyleLoss(fake_img, gt)
+            loss_dict[prefix + loss_type] = loss_style
         else:
             raise NotImplementedError(
                 f'Please check your loss type {loss_type}'
@@ -339,18 +347,38 @@ class TwoStageInpaintor(OneStageInpaintor):
         gt_img = data_batch['gt_img']
         mask = data_batch['mask']
         masked_img = data_batch['masked_img']
+        
+        
+        
+
         """
-        img_size = 512
+        img_size = 384
         MOSAIC_MIN = 0.03
         MOSAIC_MID = 0.10
         MOSAIC_MAX = 0.2
+        #iteration_count = 0
 
         mosaic_size = int(random.triangular(int(min(img_size*MOSAIC_MIN, img_size*MOSAIC_MIN)), int(min(img_size*MOSAIC_MID, img_size*MOSAIC_MID)), int(min(img_size*MOSAIC_MAX, img_size*MOSAIC_MAX))))
         images_mosaic = torch.nn.functional.interpolate(gt_img, size=(mosaic_size, mosaic_size), mode='nearest')
         images_mosaic = torch.nn.functional.interpolate(images_mosaic, size=(img_size, img_size), mode='nearest')
-        #masked = (img * (1 - mask).float()) + (images_mosaic * (mask).float())
-        masked_img = (images_mosaic * (1 - mask).float()) + (gt_img * (mask).float())
+        #masked_img = (images_mosaic * (1 - mask).float()) + (gt_img * (mask).float())
+        masked_img = (gt_img * (1 - mask).float()) + (images_mosaic * (mask).float())
+        self.iteration_count += 1
+        save_dir = '/path'
+
+
+        if self.iteration_count % 1000 == 0:
+            masked_img_rgb = masked_img[:, [2, 1, 0], ...]
+            save_image(masked_img_rgb, '{:s}/mosaic_{:d}.png'.format(save_dir, self.iteration_count))
         """
+			
+			
+			
+			
+			
+			
+			
+			
         # get common output from encdec
         if self.input_with_ones:
             tmp_ones = torch.ones_like(mask)
@@ -359,7 +387,9 @@ class TwoStageInpaintor(OneStageInpaintor):
             input_x = torch.cat([masked_img, mask], dim=1)
 
         stage1_fake_res, stage2_fake_res = self.generator(input_x)
+
         stage1_fake_img = masked_img * (1. - mask) + stage1_fake_res * mask
+
         stage2_fake_img = masked_img * (1. - mask) + stage2_fake_res * mask
 
         # discriminator training step

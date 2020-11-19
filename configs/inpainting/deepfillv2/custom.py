@@ -66,7 +66,7 @@ model = dict(
         out_act_cfg=dict(type='LeakyReLU', negative_slope=0.2),
         with_spectral_norm=True,
     ),
-    # loss_gan, percep, tv, l1, HFEN, Elastic, RelativeL1, L1CosineSim, ClipL1, FFT, OF, GP, CP, Contextual
+    # loss_gan, percep, tv, l1, HFEN, Elastic, RelativeL1, L1CosineSim, ClipL1, FFT, OF, GP, CP, Contextual, Style
     # loss_l1_hole, loss_l1_valid
 
     # default
