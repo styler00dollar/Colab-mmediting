@@ -70,7 +70,7 @@ class TwoStageInpaintor(OneStageInpaintor):
 
         self.ClipL1 = ClipL1(clip_min=0.0, clip_max=10.0)
 
-        self.FFTloss = FFTloss(loss_f = torch.nn.L1Loss, reduction='mean')
+        self.FFTLoss = FFTloss(loss_f = torch.nn.L1Loss, reduction='mean')
 
         self.OFLoss = OFLoss()
 
@@ -293,16 +293,16 @@ class TwoStageInpaintor(OneStageInpaintor):
             loss_clipl1 = self.ClipL1(fake_img, gt)
             loss_dict[prefix + loss_type] = loss_clipl1
         elif 'FFT' in loss_type:
-            loss_fft = self.FFTloss(fake_img, gt)
+            loss_fft = self.FFTLoss(fake_img, gt)
             loss_dict[prefix + loss_type] = loss_fft
         elif 'OF' in loss_type:
-            loss_of = self.OFloss(fake_img)
+            loss_of = self.OFLoss(fake_img)
             loss_dict[prefix + loss_type] = loss_of
         elif 'GP' in loss_type:
-            loss_gp = self.GPloss(fake_img, gt)
+            loss_gp = self.GPLoss(fake_img, gt)
             loss_dict[prefix + loss_type] = loss_gp
         elif 'CP' in loss_type:
-            loss_cp = self.CPloss(fake_img, gt)
+            loss_cp = self.CPLoss(fake_img, gt)
             loss_dict[prefix + loss_type] = loss_cp
         elif 'Contextual' in loss_type:
             loss_context = self.Contextual_Loss(fake_img, gt)
